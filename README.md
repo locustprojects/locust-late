@@ -1,2 +1,2 @@
-# locust-late
-Launched in 2023, Locust Late @ the DiLL is a monthly peer-to-peer skill-sharing series that facilitates the exchange of ideas among artists and technologists at Locust Projects.
+# Locust Late @ The DiLL (Digital Innovation Lounge + Lab)
+At the core of the Digital Innovation Lounge + Lab’s programming is Locust Late @ the DiLL, a monthly peer-to-peer skill-sharing series that facilitates the exchange of ideas among artists and technologists. Launched in 2023, this ongoing series cultivates a collaborative environment where participants can present works in progress, share knowledge, and engage in hands-on learning within the rapidly evolving landscape of digital art. Locust Late ensures that the DiLL remains an active site for both emerging and established artists to experiment and grow their technical mastery.
