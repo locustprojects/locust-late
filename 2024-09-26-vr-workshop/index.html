@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>VR Roller Coaster Template</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+		<link type="text/css" rel="stylesheet" href="assets/styles/main.css?v=1.1">
+        <script
+            src="assets/scripts/jquery/jquery-3.7.1.min.js">
+        </script>
+	</head>
+	<body>
+        <div id="cover">
+            <div class="content">
+                <img id="spinner" src="assets/images/rainbow.gif" />
+                <div id="loading">Loading scene...</div>
+            </div>
+        </div>
+		<script type="importmap">
+			{
+                "imports": {
+                    "three": "./assets/scripts/three/build/three.module.js",
+                    "three/addons/": "./assets/scripts/three/examples/jsm/"
+                }
+            }
+		</script>
+		<script type="module">
+            
+            // Import THREE JavaScript Assets (Custom and Stock)
+
+			import * as THREE from 'three';
+			import {
+				RollerCoasterGeometry,
+				RollerCoasterShadowGeometry,
+				RollerCoasterLiftersGeometry
+			} from './assets/scripts/three.x/RollerCoaster.js';
+			import { VRButton } from './assets/scripts/three.x/VRButton.js';
+            import { HueShiftMaterial } from './assets/scripts/three.x/HueShiftMaterial.js';
+            import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+            import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+            import { hexToRGB } from './assets/scripts/three.x/ColorUtils.js';
+            
+            // Initialize Load Checker
+
+            let allLoaded = false;
+            let loaded = {
+                glb: false,
+                sky: false,
+            }
+            let checkLoaded = setInterval(function() {
+                if (Object.values(loaded).every(status => status === true)) {
+                    clearInterval(checkLoaded);
+                    allLoaded = true;
+                    $('#cover').fadeOut(1000)
+                }
+            }, 1000)
+
+            // Initialize Setting Parameters
+
+            let params = {
+				exposure: 5,
+                speed: 10,
+                hue: 0,
+                water: false,
+                color1: '#ff00ff',
+                color2: '#0000ff'
+			};
+
+            // Load Saved Settings
+
+            const savedParams = localStorage.getItem('rollerCoasterParams');
+            if (savedParams) {
+                try {
+                    const parsedParams = JSON.parse(savedParams);
+                    console.log('Loaded params from localStorage:', parsedParams);
+                    params = { ...params, ...parsedParams };
+                } catch (e) {
+                    console.error('Failed to parse saved parameters from localStorage:', e);
+                }
+            } else {
+                fetch('assets/exports/settings.json')
+                    .then(response => {
+                        if (!response.ok) throw new Error('Settings file not found or inaccessible');
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Loaded params from settings.json:', data);
+                        params = { ...params, ...data };
+                    })
+                    .catch(error => {
+                        console.error('Failed to load settings from settings.json, using defaults:', error);
+                    }); 
+            }
+
+            // Load 3D Assets from GLBs
+
+            let loader = new GLTFLoader();
+            loader.load('assets/models/track.glb', (gltf) => { 
+                
+                // Mark GLB Assets as Loaded
+
+                loaded.glb = true;
+                console.log(gltf.scene.children) 
+
+                // Establish Scene
+
+                const scene = new THREE.Scene();
+
+                // Set Up Camera
+
+                const train = new THREE.Object3D();
+                scene.add( train );
+                const camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 500 );
+                train.add( camera );
+
+                // Prepare GLB Objects and Add to THREE Scene
+
+                gltf.scene.traverse((child) => {
+                    if (child.isMesh) {
+                        child.frustumCulled = false;
+                    }
+                });
+                scene.add( gltf.scene );
+
+                // Establish Lighting
+
+                const light = new THREE.AmbientLight( 0xe7e7e7, 0 );
+                light.intensity = 2
+                scene.add( light );
+
+                // Initialize Reusable Object Variables
+
+                let mesh, texture, material, geometry;
+
+                function createHueShiftMaterial(texture, repeat, mappingMode) {
+                }
+
+                // Skybox Material
+
+                geometry = new THREE.SphereGeometry(5, 60, 40);
+                geometry.scale(-80, 80, 80); 
+                loader = new THREE.TextureLoader();
+                texture = loader.load('assets/textures/sky.png', function() {
+                    loaded.sky = true;
+                }); 
+                texture.minFilter = THREE.LinearFilter;
+                texture.magFilter = THREE.LinearFilter;
+                texture.generateMipmaps = false;
+                texture.needsUpdate = true;
+                texture.colorSpace = THREE.SRGBColorSpace;
+                texture.wrapS = THREE.ClampToEdgeWrapping;
+                texture.wrapT = THREE.ClampToEdgeWrapping;
+                material = new HueShiftMaterial(
+                    texture,
+                    new THREE.Vector2(1, 1),
+                    0.0,
+                    params.hue + .5
+                );
+                const skyboxMesh = new THREE.Mesh(geometry, material);
+                skyboxMesh.position.set(0, 0, 0);
+                scene.add(skyboxMesh);
+
+                // Floor Material
+
+                loader = new THREE.TextureLoader();
+                texture = loader.load('assets/textures/checkers.png');
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(80, 80); 
+                material = new HueShiftMaterial(
+                    texture,
+                    new THREE.Vector2(80, 80),
+                    1.0,
+                    params.hue
+                );
+                material.uniforms.repeat.value = new THREE.Vector2(80, 80); 
+                geometry = new THREE.PlaneGeometry(500, 500);
+                const floor = new THREE.Mesh(geometry, material);
+                floor.rotation.x = -Math.PI / 2;
+                floor.position.y = 0;
+                scene.add(floor);
+
+                // Initialize Roller Coaster Curve from GLB Bezier Curve
+
+                let curveMesh = gltf.scene.children.find(c => c.name === "Track"); 
+                curveMesh.visible = false;
+                let vertices = curveMesh.geometry.attributes.position.array;
+                let curvePoints = [];
+                for (let i = 0; i < vertices.length; i += 3) {
+                    curvePoints.push(new THREE.Vector3(vertices[i], vertices[i + 1], vertices[i + 2]));
+                }
+                const spline = new THREE.CatmullRomCurve3(curvePoints);
+                spline.tension = 1;
+                const curve = ( function () {
+                    const vector = new THREE.Vector3();
+                    const vector2 = new THREE.Vector3();
+                    return {
+                        getPointAt: function(t) {
+                            return spline.getPointAt(t);
+                        },
+                        getTangentAt: function(t) {
+                            return spline.getTangentAt(t);
+                        }
+                    };
+                } )();
+
+                // Add Roller Coaster Geometry from Curve
+
+                let RCMesh, RCGeometry, RCMaterial;
+                function addRollerCoasterGeometry(colors) {
+                    if (RCMesh) {
+                        scene.remove(RCMesh);
+                        if (RCMesh.geometry) RCMesh.geometry.dispose()
+                        if (RCMesh.material) {
+                            if (Array.isArray(RCMesh.material)) RCMesh.material.forEach(material => material.dispose())
+                            else RCMesh.material.dispose();
+                        }
+                    }
+                    const color1 = hexToRGB(colors[0])
+                    const color2 = hexToRGB(colors[1])
+                    RCGeometry = new RollerCoasterGeometry( curve, curvePoints.length * 4, [color1, color2] );
+                    RCMaterial = new THREE.MeshPhongMaterial( {
+                        vertexColors: true,
+                    } );
+                    RCMesh = new THREE.Mesh( RCGeometry, RCMaterial );
+                    scene.add( RCMesh );
+                }
+                addRollerCoasterGeometry([params.color1, params.color2])
+
+                // Add Roller Coaster Lifter Geometry
+                
+                geometry = new RollerCoasterLiftersGeometry( curve, 100 );
+                material = new THREE.MeshPhongMaterial();
+                mesh = new THREE.Mesh( geometry, material );
+                mesh.position.y = -.1;
+                scene.add( mesh );
+                
+                // Add Roller Coaster Shadows
+                
+                geometry = new RollerCoasterShadowGeometry( curve, 500 );
+                material = new THREE.MeshBasicMaterial( {
+                    color: 0x00000, depthWrite: false, transparent: true
+                } );
+                material.opacity = .5
+                mesh = new THREE.Mesh( geometry, material );
+                mesh.position.y = 0.1;
+                scene.add( mesh );
+                
+                // Set Up Renderer
+
+                const renderer = new THREE.WebGLRenderer( { antialias: true } );
+                renderer.setPixelRatio( window.devicePixelRatio );
+                renderer.setSize( window.innerWidth, window.innerHeight );
+                renderer.xr.enabled = true;
+                renderer.xr.setReferenceSpaceType( 'local' );
+                renderer.toneMapping = THREE.ReinhardToneMapping;
+                renderer.toneMappingExposure = params.exposure;
+                document.body.appendChild( renderer.domElement );
+                document.body.appendChild( VRButton.createButton( renderer ) );
+
+                // Establish Render Variables
+
+                const position = new THREE.Vector3();
+                const tangent = new THREE.Vector3();
+                const lookAt = new THREE.Vector3();
+                let velocity = 0;
+                let progress = 0;
+                let progressSpeed = params.speed
+                let prevTime = performance.now();
+
+                // Initialize Render Function and Begin Render
+
+                function render() {
+
+                    // Render Only if Everything is Loaded and Activity Check Function Validates 
+
+                    if (allLoaded) {
+
+                        // Update Time
+                        
+                        const time = performance.now();
+                        const delta = time - prevTime;
+                        prevTime = time;
+
+                        // Update Camera Position
+
+                        progress += velocity * progressSpeed;
+                        progress = progress % 1;
+                        position.copy( curve.getPointAt( progress ) );
+                        position.y += 0.8;
+                        train.position.copy( position ); 
+                        tangent.copy( curve.getTangentAt( progress ) );
+                        velocity -= tangent.y * 0.0000001 * delta;
+                        velocity = Math.max( 0.00004, Math.min( 0.0002, velocity ) );
+                        train.lookAt( lookAt.copy( position ).sub( tangent ) );
+
+                        // Render
+
+                        renderer.render( scene, camera );
+
+                    }
+
+                }
+                renderer.setAnimationLoop( render );
+
+                // Add Listener to Adjust the Render Viewport On Window Resize
+
+                window.addEventListener( 'resize', onWindowResize );
+                function onWindowResize() {
+                    camera.aspect = window.innerWidth / window.innerHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize( window.innerWidth, window.innerHeight );
+                }
+
+                // Initialize GUI Helper Functions
+
+                function guiCallback() {
+                    localStorage.setItem('rollerCoasterParams', JSON.stringify(params));
+                    saveButton.name('Bundle Coaster and Settings')
+                    saveButton.enable()
+                }
+                function saveSettingsToServer() {
+                    fetch('/save_settings', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(params)
+                    })
+                    .then(response => response.text())
+                    .then(data => {
+                        console.log('Server response:', data);
+                        saveButton.name('Bundle Succeeded')
+                        saveButton.disable()
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        saveButton.name('Error')
+                        saveButton.disable()
+                    });
+                }
+
+                // Add GUI
+
+                const gui = new GUI();
+                gui.add(params, 'speed', 0, 50, 1).name('Speed').onChange(function(value) {
+                    progressSpeed = value
+                    guiCallback()
+                })
+				gui.add(params, 'hue', 0, 1, 0.01).name('Scene Color').onChange(function(value) {
+                    skyboxMesh.material.uniforms.hueShift.value = value + 0.5;
+                    floor.material.uniforms.hueShift.value = value;
+                    guiCallback()
+                });
+                gui.addColor({ color : params.color1 }, 'color').name('Rail Color').onChange( function(colorValue) {
+                    params.color1 = colorValue
+                    addRollerCoasterGeometry([colorValue, params.color2])
+                    guiCallback()
+                });
+                gui.addColor({ color : params.color2 }, 'color').name('Center Beam Color').onChange( function(colorValue) {
+                    params.color2 = colorValue
+                    addRollerCoasterGeometry([params.color1, colorValue])
+                    guiCallback()
+                });
+                const saveButton = gui.add({ saveSettings: saveSettingsToServer }, 'saveSettings').name('Bundle Coaster and Settings');
+				gui.open();
+
+            });
+
+		</script>
+
+	</body>
+</html>
