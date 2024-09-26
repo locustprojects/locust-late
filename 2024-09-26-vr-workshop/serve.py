@@ -64,7 +64,7 @@ class CustomHandler(http.server.SimpleHTTPRequestHandler):
 with socketserver.TCPServer(("", PORT), CustomHandler) as httpd:
     # Automatically open the default browser to the right address
     print(f"Serving at http://localhost:{PORT}")
-    # webbrowser.open(f"http://localhost:{PORT}")
+    webbrowser.open(f"http://localhost:{PORT}")
 
     # Keep the server running
     httpd.serve_forever()
